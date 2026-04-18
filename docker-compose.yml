@@ -1,0 +1,26 @@
+services:
+  knotodo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APT_MIRROR_BASE: ${KNOTODO_APT_MIRROR_BASE:-https://mirrors.tuna.tsinghua.edu.cn}
+        NPM_REGISTRY: ${KNOTODO_NPM_REGISTRY:-https://registry.npmmirror.com}
+        PIP_INDEX_URL: ${KNOTODO_PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    container_name: knotodo-app
+    env_file:
+      - ./.env
+    environment:
+      - KNOTODO_FRONTEND_PORT=${KNOTODO_FRONTEND_PORT:-4173}
+      - KNOTODO_BACKEND_PORT=${KNOTODO_BACKEND_PORT:-8081}
+      - KNOTODO_LOG_LEVEL=${KNOTODO_LOG_LEVEL:-INFO}
+      - KNOTODO_SERVE_BUILT_FRONTEND=${KNOTODO_SERVE_BUILT_FRONTEND:-1}
+      - KNOTODO_DISABLE_FRONTEND=${KNOTODO_DISABLE_FRONTEND:-1}
+      - KNOTODO_DB_FILE=/app/knotodo/local_data/state.json
+      - KNOTODO_LOCK_FILE=/app/knotodo/local_data/state.json.lock
+    ports:
+      - "${KNOTODO_FRONTEND_PORT:-4173}:${KNOTODO_BACKEND_PORT:-8081}"
+      - "${KNOTODO_BACKEND_PORT:-8081}:${KNOTODO_BACKEND_PORT:-8081}"
+    volumes:
+      - ./local_data:/app/knotodo/local_data
+    restart: always
