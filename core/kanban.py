@@ -210,6 +210,32 @@ def _resequence_cards(state: dict, lane_id: str, moving_card_id: str | None = No
         card["updated_at"] = now
 
 
+def _resolve_card_target_index(
+    state: dict,
+    lane_id: str,
+    moving_card_id: str,
+    position: int | None = None,
+    before_card_id: str | None = None,
+    after_card_id: str | None = None,
+) -> int | None:
+    if before_card_id and after_card_id:
+        raise CalendarValidationError("before_card_id 和 after_card_id 不能同时提供。", status_code=422)
+    if not before_card_id and not after_card_id:
+        return position
+
+    ordered = [item for item in _sorted_lane_cards(state, lane_id) if item["id"] != moving_card_id]
+    if before_card_id:
+        target = next((index for index, item in enumerate(ordered) if item["id"] == before_card_id), None)
+        if target is None:
+            raise CalendarValidationError("目标前置卡片不存在或不在目标列表中。", status_code=404)
+        return target
+
+    target = next((index for index, item in enumerate(ordered) if item["id"] == after_card_id), None)
+    if target is None:
+        raise CalendarValidationError("目标后置卡片不存在或不在目标列表中。", status_code=404)
+    return target + 1
+
+
 def _validate_card_event_payload(payload: dict, partial: bool = False) -> None:
     event_type = _normalize_event_type(payload.get("event_type"))
     date_value = _normalize_date_text(payload.get("date")) if "date" in payload else str(payload.get("date") or "").strip()
@@ -865,7 +891,14 @@ def update_card(card_id: str, payload: dict) -> dict | None:
             return None, False
 
         old_lane_id, old_board_id = _apply_card_patch(card, payload, state)
-        target_index = payload.get("position")
+        target_index = _resolve_card_target_index(
+            state,
+            card["lane_id"],
+            card_id,
+            position=payload.get("position"),
+            before_card_id=payload.get("before_card_id"),
+            after_card_id=payload.get("after_card_id"),
+        )
         _resequence_cards(state, old_lane_id)
         _resequence_cards(state, card["lane_id"], moving_card_id=card_id, target_index=target_index)
         _touch_board(state, old_board_id)
@@ -878,10 +911,20 @@ def update_card(card_id: str, payload: dict) -> dict | None:
     return next((item for item in saved.get("cards", []) if item["id"] == updated_id), None)
 
 
-def move_card(card_id: str, lane_id: str, position: int | None = None) -> dict | None:
+def move_card(
+    card_id: str,
+    lane_id: str,
+    position: int | None = None,
+    before_card_id: str | None = None,
+    after_card_id: str | None = None,
+) -> dict | None:
     payload = {"lane_id": lane_id}
     if position is not None:
         payload["position"] = position
+    if before_card_id:
+        payload["before_card_id"] = before_card_id
+    if after_card_id:
+        payload["after_card_id"] = after_card_id
     return update_card(card_id, payload)
 
 

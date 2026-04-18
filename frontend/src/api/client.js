@@ -195,10 +195,15 @@ export const updateCard = (cardId, payload) => request(`/api/cards/${encodeURICo
   body: JSON.stringify(payload),
 })
 
-export const moveCard = (cardId, laneId, position) => request(`/api/cards/${encodeURIComponent(cardId)}/move`, {
+export const moveCard = (cardId, move) => request(`/api/cards/${encodeURIComponent(cardId)}/move`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ lane_id: laneId, position }),
+  body: JSON.stringify({
+    lane_id: move.laneId,
+    position: typeof move.position === 'number' ? move.position : undefined,
+    before_card_id: String(move.beforeCardId || '').trim() || undefined,
+    after_card_id: String(move.afterCardId || '').trim() || undefined,
+  }),
 })
 
 export const deleteCard = (cardId) => request(`/api/cards/${encodeURIComponent(cardId)}`, {

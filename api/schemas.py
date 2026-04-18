@@ -153,3 +153,5 @@ class CardPatchPayload(BaseModel):
 class CardMovePayload(BaseModel):
     lane_id: str = Field(min_length=1)
     position: int | None = None
+    before_card_id: str | None = None
+    after_card_id: str | None = None

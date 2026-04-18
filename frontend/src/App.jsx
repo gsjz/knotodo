@@ -117,6 +117,28 @@ const isInteractiveTextEntryTarget = (target) => {
   return Boolean(target.closest('[contenteditable="true"]'))
 }
 
+const resolveVisibleCardMoveTarget = ({ visibleLanes, laneId, cardId, direction }) => {
+  const visibleLane = (visibleLanes || []).find((item) => item.id === laneId)
+  const visibleCards = visibleLane?.cards || []
+  const visibleIndex = visibleCards.findIndex((item) => item.id === cardId)
+  if (visibleIndex < 0) return null
+
+  if (direction < 0) {
+    if (visibleIndex > 0) {
+      return { beforeCardId: visibleCards[visibleIndex - 1].id }
+    }
+    return null
+  }
+
+  if (direction > 0) {
+    if (visibleIndex >= 0 && visibleIndex < visibleCards.length - 1) {
+      return { afterCardId: visibleCards[visibleIndex + 1].id }
+    }
+  }
+
+  return null
+}
+
 const normalizeWeekdays = (value) => {
   const rawItems = Array.isArray(value) ? value : splitCsv(value)
   const normalized = []
@@ -1113,6 +1135,7 @@ function App() {
   useEffect(() => {
     const handleGlobalArrowShortcut = (event) => {
       if (event.defaultPrevented) return
+      if (event.repeat) return
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
       if (isInteractiveTextEntryTarget(event.target)) return
@@ -1132,23 +1155,47 @@ function App() {
         if (event.key === 'ArrowLeft' && laneIndex > 0) {
           const targetLane = lanes[laneIndex - 1]
           if (targetLane) {
-            void handleMoveCard(selectedCard.id, targetLane.id, (targetLane.cards || []).length)
+            const targetVisibleLane = filteredLanes.find((lane) => lane.id === targetLane.id)
+            const targetVisibleCards = targetVisibleLane?.cards || []
+            void handleMoveCard(selectedCard.id, targetVisibleCards.length > 0
+              ? { laneId: targetLane.id, afterCardId: targetVisibleCards[targetVisibleCards.length - 1].id }
+              : { laneId: targetLane.id, position: 0 })
           }
           return
         }
         if (event.key === 'ArrowRight' && laneIndex < lanes.length - 1) {
           const targetLane = lanes[laneIndex + 1]
           if (targetLane) {
-            void handleMoveCard(selectedCard.id, targetLane.id, (targetLane.cards || []).length)
+            const targetVisibleLane = filteredLanes.find((lane) => lane.id === targetLane.id)
+            const targetVisibleCards = targetVisibleLane?.cards || []
+            void handleMoveCard(selectedCard.id, targetVisibleCards.length > 0
+              ? { laneId: targetLane.id, afterCardId: targetVisibleCards[targetVisibleCards.length - 1].id }
+              : { laneId: targetLane.id, position: 0 })
           }
           return
         }
-        if (event.key === 'ArrowUp' && cardIndex > 0) {
-          void handleMoveCard(selectedCard.id, currentLane.id, cardIndex - 1)
+        if (event.key === 'ArrowUp') {
+          const moveTarget = resolveVisibleCardMoveTarget({
+            visibleLanes: filteredLanes,
+            laneId: currentLane.id,
+            cardId: selectedCard.id,
+            direction: -1,
+          })
+          if (moveTarget) {
+            void handleMoveCard(selectedCard.id, { laneId: currentLane.id, ...moveTarget })
+          }
           return
         }
-        if (event.key === 'ArrowDown' && cardIndex < cards.length - 1) {
-          void handleMoveCard(selectedCard.id, currentLane.id, cardIndex + 1)
+        if (event.key === 'ArrowDown') {
+          const moveTarget = resolveVisibleCardMoveTarget({
+            visibleLanes: filteredLanes,
+            laneId: currentLane.id,
+            cardId: selectedCard.id,
+            direction: 1,
+          })
+          if (moveTarget) {
+            void handleMoveCard(selectedCard.id, { laneId: currentLane.id, ...moveTarget })
+          }
         }
         return
       }
@@ -1178,7 +1225,7 @@ function App() {
 
     window.addEventListener('keydown', handleGlobalArrowShortcut)
     return () => window.removeEventListener('keydown', handleGlobalArrowShortcut)
-  }, [boardView.lanes, saving, selectedCard, selectedLaneId])
+  }, [boardView.lanes, filteredLanes, saving, selectedCard, selectedLaneId])
 
   const handleSwitchBoard = async (boardId) => {
     setActiveBoardId(boardId)
@@ -1323,99 +1370,9 @@ function App() {
     setIsCardDetailOpen(true)
   }
 
-  const handleCreateFeatureDemoCards = async () => {
-    if (!activeBoardId) return
-    const targetLane = (boardView.lanes || [])[0]
-    if (!targetLane) {
-      setError('请先创建至少一个列表，再生成特性示例。')
-      return
-    }
-    const baseDay = selectedDay || today
-    const recurringEndDay = addDaysToIso(baseDay, 14)
-    const payloads = [
-      {
-        title: '[Feature] Interval Basic',
-        description: '标准区间事件，支持 `Markdown`。\\n\\n公式：$a^2+b^2=c^2$',
-        event_type: 'interval',
-        date: baseDay,
-        start_time: '09:00',
-        end_time: '10:30',
-      },
-      {
-        title: '[Feature] Cross-Day Interval',
-        description: '跨天事件示例：结束时间早于开始时间即视为 `+1 day`。',
-        event_type: 'interval',
-        date: baseDay,
-        start_time: '23:20',
-        end_time: '01:10',
-      },
-      {
-        title: '[Feature] Deadline',
-        description: 'Deadline 事件：仅输入截止时间，开始时间会自动推导。',
-        event_type: 'deadline',
-        due_date: addDaysToIso(baseDay, 1),
-        date: addDaysToIso(baseDay, 1),
-        end_time: '19:00',
-      },
-      {
-        title: '[Feature] Recurring Daily',
-        description: '周期 daily + 起止日期',
-        event_type: 'recurring',
-        date: baseDay,
-        repeat_end_date: recurringEndDay,
-        repeat_rule: 'daily',
-        repeat_weekdays: [],
-        start_time: '07:40',
-        end_time: '08:10',
-      },
-      {
-        title: '[Feature] Recurring Weekly',
-        description: '周期 weekly + 指定 weekdays',
-        event_type: 'recurring',
-        date: baseDay,
-        repeat_end_date: recurringEndDay,
-        repeat_rule: 'weekly',
-        repeat_weekdays: ['mon', 'wed', 'fri'],
-        start_time: '20:00',
-        end_time: '21:00',
-      },
-      {
-        title: '[Feature] Short Event (Compact)',
-        description: '短事件，Timeline Preview 会尽量单行显示。',
-        event_type: 'interval',
-        date: baseDay,
-        start_time: '10:00',
-        end_time: '10:10',
-      },
-      {
-        title: '[Feature] Checklist Markdown + LaTeX',
-        description: 'Checklist 支持 Markdown 与公式。\\n\\n```cpp\\ncout << \"demo\";\\n```',
-        event_type: 'interval',
-        date: baseDay,
-        start_time: '14:00',
-        end_time: '15:00',
-        checklist: [
-          { id: `demo-${Date.now()}-1`, text: '- [ ] 证明：$\\sum_{i=1}^n i = n(n+1)/2$', done: false },
-          { id: `demo-${Date.now()}-2`, text: '实现 `Dijkstra` 并分析复杂度。', done: false },
-        ],
-      },
-    ]
-
+  const handleMoveCard = async (cardId, move) => {
     await runMutation(
-      () => Promise.all(payloads.map((payload, index) => createCard({
-        board_id: activeBoardId,
-        lane_id: targetLane.id,
-        position: (targetLane.cards || []).length + index,
-        color: 'slate',
-        ...payload,
-      }))),
-      { successMessage: '已创建特性示例卡片（含跨天/周期/Markdown/Checklist）' },
-    )
-  }
-
-  const handleMoveCard = async (cardId, laneId, position) => {
-    await runMutation(
-      () => moveCard(cardId, laneId, position),
+      () => moveCard(cardId, move),
       { successMessage: 'Card 已移动' },
     )
   }
@@ -2040,14 +1997,6 @@ function App() {
                   onClick={() => setIsBoardEditorOpen(true)}
                 >
                   Edit Board
-                </button>
-                <button
-                  type="button"
-                  className="knt-btn knt-btn--tiny"
-                  disabled={!activeBoardId || saving}
-                  onClick={() => { void handleCreateFeatureDemoCards() }}
-                >
-                  Create Feature Demos
                 </button>
               </div>
             </header>
@@ -2924,7 +2873,6 @@ function App() {
                 })()}
               </div>
             </div>
-            <p className="knt-hint">时间轴已支持跨日期连续滚动。详情打开时：点击时间轴会平移开始并保持时长；区间/周期事件可拖拽上下边界；Deadline 只支持点击移动显示块，不调整长度。</p>
           </section>
         </aside>
       </section>

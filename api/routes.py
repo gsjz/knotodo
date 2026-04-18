@@ -179,7 +179,8 @@ def patch_card(card_id: str, payload: CardPatchPayload) -> dict:
 
 @router.post("/api/cards/{card_id}/move")
 def post_move_card(card_id: str, payload: CardMovePayload) -> dict:
-    updated = run_calendar_action(lambda: move_card(card_id, payload.lane_id, payload.position))
+    move_payload = payload.model_dump(exclude_none=True)
+    updated = run_calendar_action(lambda: move_card(card_id, **move_payload))
     if updated is None:
         raise HTTPException(status_code=404, detail="Card not found")
     return {"item": updated}
